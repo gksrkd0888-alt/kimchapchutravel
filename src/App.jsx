@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { db } from "./firebase";
+import { collection, doc, onSnapshot, setDoc, deleteDoc } from "firebase/firestore";
 import {
   Plus,
   Trash2,
@@ -555,8 +557,12 @@ function getTripStatus(trip) {
 }
 
 // ================= 최상위: 여행 목록 + 여행 화면 =================
+// Firestore의 "trips" 컬렉션과 실시간으로 동기화됩니다.
+// 누군가 문서를 추가/수정/삭제하면 onSnapshot이 즉시 감지해서
+// 이 화면을 보고 있는 모든 사람에게 자동으로 반영돼요 (새로고침 필요 없음).
 export default function TripPlannerApp() {
-  const [trips, setTrips] = useState([seedTrip()]);
+  const [trips, setTrips] = useState([]);
+  const [loaded, setLoaded] = useState(false);
   const [activeTripId, setActiveTripId] = useState(null);
   const [newTripName, setNewTripName] = useState("");
   const [newTripStart, setNewTripStart] = useState("");
@@ -565,10 +571,26 @@ export default function TripPlannerApp() {
   const [editingTripId, setEditingTripId] = useState(null);
   const [editTripDraft, setEditTripDraft] = useState(null);
 
-  function addTrip() {
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "trips"),
+      (snapshot) => {
+        const next = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setTrips(next);
+        setLoaded(true);
+      },
+      (err) => {
+        console.error("Firestore 연결 실패:", err);
+        setLoaded(true);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  async function addTrip() {
     if (!newTripName.trim()) return;
+    const id = uid("t");
     const trip = {
-      id: uid("t"),
       name: newTripName.trim(),
       startDate: newTripStart || null,
       endDate: newTripEnd || null,
@@ -579,18 +601,24 @@ export default function TripPlannerApp() {
       photos: [],
       payments: [],
     };
-    setTrips([...trips, trip]);
+    await setDoc(doc(db, "trips", id), trip);
     setNewTripName("");
     setNewTripStart("");
     setNewTripEnd("");
     setShowNewTripForm(false);
-    setActiveTripId(trip.id);
+    setActiveTripId(id);
   }
-  function deleteTrip(id) {
-    setTrips(trips.filter((t) => t.id !== id));
+  async function deleteTrip(id) {
+    await deleteDoc(doc(db, "trips", id));
   }
-  function updateTrip(id, updater) {
-    setTrips(trips.map((t) => (t.id === id ? { ...t, ...updater(t) } : t)));
+  async function updateTrip(id, updater) {
+    const current = trips.find((t) => t.id === id);
+    if (!current) return;
+    const patch = updater(current);
+    // 낙관적 업데이트: Firestore 응답을 기다리지 않고 화면에 바로 반영해서 입력이 끊기지 않게 함.
+    // 실제 값은 곧이어 onSnapshot으로 다시 확인/동기화됨.
+    setTrips((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    await setDoc(doc(db, "trips", id), patch, { merge: true });
   }
   function startEditTrip(t) {
     setEditingTripId(t.id);
@@ -600,17 +628,13 @@ export default function TripPlannerApp() {
     setEditingTripId(null);
     setEditTripDraft(null);
   }
-  function saveEditTrip() {
+  async function saveEditTrip() {
     if (!editTripDraft.name.trim()) return;
-    setTrips(
-      trips.map((t) =>
-        t.id === editingTripId
-          ? { ...t, name: editTripDraft.name.trim(), startDate: editTripDraft.startDate || null, endDate: editTripDraft.endDate || null }
-          : t
-      )
-    );
+    const patch = { name: editTripDraft.name.trim(), startDate: editTripDraft.startDate || null, endDate: editTripDraft.endDate || null };
+    setTrips((prev) => prev.map((t) => (t.id === editingTripId ? { ...t, ...patch } : t)));
     setEditingTripId(null);
     setEditTripDraft(null);
+    await setDoc(doc(db, "trips", editingTripId), patch, { merge: true });
   }
 
   const activeTrip = trips.find((t) => t.id === activeTripId);
@@ -661,7 +685,8 @@ export default function TripPlannerApp() {
         </div>
       )}
 
-      {trips.length === 0 && <div style={{ fontSize: 13, color: MUTE }}>아직 등록한 여행이 없어요. "새 여행"으로 시작해보세요.</div>}
+      {!loaded && <div style={{ fontSize: 13, color: MUTE }}>불러오는 중…</div>}
+      {loaded && trips.length === 0 && <div style={{ fontSize: 13, color: MUTE }}>아직 등록한 여행이 없어요. "새 여행"으로 시작해보세요.</div>}
 
       {trips.map((t) => {
         const dayCount = t.days.length;
