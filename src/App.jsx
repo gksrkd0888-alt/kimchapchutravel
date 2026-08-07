@@ -1529,7 +1529,7 @@ function NaverMapPanel({ stops, dayLabel }) {
     if (existing) existing.remove();
     const script = document.createElement("script");
     script.id = "naver-maps-sdk";
-    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${encodeURIComponent(clientId)}`;
+    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(clientId)}`;
     script.onload = () => setScriptStatus("ready");
     script.onerror = () => setScriptStatus("error");
     document.head.appendChild(script);
