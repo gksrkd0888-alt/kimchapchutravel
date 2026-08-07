@@ -977,6 +977,9 @@ function PhotoAlbumTab({ days, photos, setPhotos }) {
   function recategorize(id, category) {
     setPhotos((photos || []).map((p) => (p.id === id ? { ...p, category } : p)));
   }
+  function renamePhoto(id, title) {
+    setPhotos((photos || []).map((p) => (p.id === id ? { ...p, title } : p)));
+  }
 
   const groups = PHOTO_CATEGORIES.map((cat) => ({ cat, list: all.filter((p) => p.category === cat) })).filter((g) => g.list.length > 0);
 
@@ -1016,8 +1019,16 @@ function PhotoAlbumTab({ days, photos, setPhotos }) {
                     </button>
                   )}
                   <div style={{ fontSize: 10, color: MUTE, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {p.source === "stop" ? `${p.dayLabel} · ${p.title}` : "직접 추가"}
+                    {p.source === "stop" && `${p.dayLabel} · ${p.title}`}
                   </div>
+                  {p.source === "upload" && (
+                    <input
+                      value={p.title || ""}
+                      onChange={(e) => renamePhoto(p.id, e.target.value)}
+                      placeholder="사진 이름"
+                      style={{ width: "100%", marginTop: 3, fontSize: 10, padding: "2px 3px", border: `1px solid ${LINE}`, borderRadius: 4, background: PAPER, color: INK, boxSizing: "border-box" }}
+                    />
+                  )}
                   {p.source === "upload" && (
                     <select
                       value={p.category}
@@ -1513,22 +1524,22 @@ function NaverMapPanel({ stops, dayLabel }) {
   const [scriptStatus, setScriptStatus] = useState("idle");
   const [storageChecked, setStorageChecked] = useState(false);
 
+  // 네이버 지도 Client ID는 앱을 쓰는 모두에게 공통이라, 개인 브라우저가 아니라
+  // Firestore의 settings/app 문서에 저장한다. 한 명이 연결하면 모두에게 바로 반영된다.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await window.storage.get("naver_map_client_id");
-        if (!cancelled && result?.value) {
-          setClientId(result.value);
-          setClientIdInput(result.value);
+    const unsubscribe = onSnapshot(
+      doc(db, "settings", "app"),
+      (snap) => {
+        const savedId = snap.exists() ? snap.data().naverMapClientId : "";
+        if (savedId) {
+          setClientId(savedId);
+          setClientIdInput(savedId);
         }
-      } catch {
-        // no stored value
-      } finally {
-        if (!cancelled) setStorageChecked(true);
-      }
-    })();
-    return () => { cancelled = true; };
+        setStorageChecked(true);
+      },
+      () => setStorageChecked(true)
+    );
+    return () => unsubscribe();
   }, []);
 
   async function saveClientId() {
@@ -1537,9 +1548,9 @@ function NaverMapPanel({ stops, dayLabel }) {
     setClientId(id);
     setScriptStatus("idle");
     try {
-      await window.storage.set("naver_map_client_id", id);
+      await setDoc(doc(db, "settings", "app"), { naverMapClientId: id }, { merge: true });
     } catch {
-      // continue for this session even if save fails
+      // Firestore 저장이 실패해도 이번 세션에서는 계속 사용 가능
     }
   }
 
@@ -1634,7 +1645,7 @@ function NaverMapPanel({ stops, dayLabel }) {
 
 // ---------------- 예산 ----------------
 function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPayments, tripName }) {
-  const [draft, setDraft] = useState({ title: "", amount: "", payer: members[0] || "", category: EXPENSE_CATEGORIES[0], excludeFromSplit: false });
+  const [draft, setDraft] = useState({ title: "", amount: "", payer: members[0] || "", category: EXPENSE_CATEGORIES[0] });
   const [memberDraft, setMemberDraft] = useState("");
   const [editingExpenseId, setEditingExpenseId] = useState(null);
   const [editExpenseDraft, setEditExpenseDraft] = useState(null);
@@ -1646,13 +1657,10 @@ function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [members]);
 
-  const splitExpenses = expenses.filter((e) => !e.excludeFromSplit);
-  const treatExpenses = expenses.filter((e) => e.excludeFromSplit);
-  const total = splitExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const treatTotal = treatExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const total = expenses.reduce((sum, e) => sum + e.amount, 0);
   const perPerson = members.length ? total / members.length : 0;
   const paidByMember = Object.fromEntries(members.map((m) => [m, 0]));
-  splitExpenses.forEach((e) => { paidByMember[e.payer] = (paidByMember[e.payer] || 0) + e.amount; });
+  expenses.forEach((e) => { paidByMember[e.payer] = (paidByMember[e.payer] || 0) + e.amount; });
 
   // 이미 직접 주고받은 송금 기록을 반영해 남은 정산액을 다시 계산한다.
   const adjustedPaidByMember = { ...paidByMember };
@@ -1673,15 +1681,15 @@ function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPa
   function addExpense() {
     const amt = Number(draft.amount);
     if (!draft.title.trim() || !amt || !draft.payer) return;
-    setExpenses([...expenses, { id: uid("e"), title: draft.title, amount: amt, payer: draft.payer, category: draft.category, excludeFromSplit: draft.excludeFromSplit }]);
-    setDraft({ title: "", amount: "", payer: draft.payer, category: draft.category, excludeFromSplit: false });
+    setExpenses([...expenses, { id: uid("e"), title: draft.title, amount: amt, payer: draft.payer, category: draft.category }]);
+    setDraft({ title: "", amount: "", payer: draft.payer, category: draft.category });
   }
   function removeExpense(id) {
     setExpenses(expenses.filter((e) => e.id !== id));
   }
   function startEditExpense(e) {
     setEditingExpenseId(e.id);
-    setEditExpenseDraft({ title: e.title, amount: String(e.amount), payer: e.payer, category: e.category || EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1], excludeFromSplit: !!e.excludeFromSplit });
+    setEditExpenseDraft({ title: e.title, amount: String(e.amount), payer: e.payer, category: e.category || EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1] });
   }
   function cancelEditExpense() {
     setEditingExpenseId(null);
@@ -1690,7 +1698,7 @@ function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPa
   function saveEditExpense() {
     const amt = Number(editExpenseDraft.amount);
     if (!editExpenseDraft.title.trim() || !amt) return;
-    setExpenses(expenses.map((e) => (e.id === editingExpenseId ? { ...e, title: editExpenseDraft.title, amount: amt, payer: editExpenseDraft.payer, category: editExpenseDraft.category, excludeFromSplit: editExpenseDraft.excludeFromSplit } : e)));
+    setExpenses(expenses.map((e) => (e.id === editingExpenseId ? { ...e, title: editExpenseDraft.title, amount: amt, payer: editExpenseDraft.payer, category: editExpenseDraft.category } : e)));
     setEditingExpenseId(null);
     setEditExpenseDraft(null);
   }
@@ -1722,28 +1730,17 @@ function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPa
         {expenses.length === 0 && <div style={{ fontSize: 12, color: MUTE, marginBottom: 10 }}>아직 지출 내역이 없어요.</div>}
         {expenses.map((e) =>
           editingExpenseId === e.id ? (
-            <div key={e.id} style={{ padding: "10px 0", borderBottom: `1px solid ${LINE}` }}>
-              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
-                <input value={editExpenseDraft.title} onChange={(ev) => setEditExpenseDraft({ ...editExpenseDraft, title: ev.target.value })} style={inputStyle(110)} autoFocus />
-                <input type="number" value={editExpenseDraft.amount} onChange={(ev) => setEditExpenseDraft({ ...editExpenseDraft, amount: ev.target.value })} style={inputStyle(80)} />
-                <select value={editExpenseDraft.payer} onChange={(ev) => setEditExpenseDraft({ ...editExpenseDraft, payer: ev.target.value })} style={{ ...inputStyle(80), padding: "8px 6px" }}>
-                  {members.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-                <select value={editExpenseDraft.category} onChange={(ev) => setEditExpenseDraft({ ...editExpenseDraft, category: ev.target.value })} style={{ ...inputStyle(90), padding: "8px 6px" }}>
-                  {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <button onClick={saveEditExpense} style={{ ...primaryBtn(), padding: "6px 10px", fontSize: 12 }}>저장</button>
-                <button onClick={cancelEditExpense} style={{ ...iconBtn(false), padding: "6px 10px", fontSize: 12 }}>취소</button>
-              </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: MUTE, cursor: "pointer", width: "fit-content" }}>
-                <input
-                  type="checkbox"
-                  checked={editExpenseDraft.excludeFromSplit}
-                  onChange={(ev) => setEditExpenseDraft({ ...editExpenseDraft, excludeFromSplit: ev.target.checked })}
-                  style={{ accentColor: ACCENT }}
-                />
-                정산에서 제외 ({editExpenseDraft.payer}가 쐈어요)
-              </label>
+            <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${LINE}`, flexWrap: "wrap" }}>
+              <input value={editExpenseDraft.title} onChange={(ev) => setEditExpenseDraft({ ...editExpenseDraft, title: ev.target.value })} style={inputStyle(110)} autoFocus />
+              <input type="number" value={editExpenseDraft.amount} onChange={(ev) => setEditExpenseDraft({ ...editExpenseDraft, amount: ev.target.value })} style={inputStyle(80)} />
+              <select value={editExpenseDraft.payer} onChange={(ev) => setEditExpenseDraft({ ...editExpenseDraft, payer: ev.target.value })} style={{ ...inputStyle(80), padding: "8px 6px" }}>
+                {members.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <select value={editExpenseDraft.category} onChange={(ev) => setEditExpenseDraft({ ...editExpenseDraft, category: ev.target.value })} style={{ ...inputStyle(90), padding: "8px 6px" }}>
+                {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <button onClick={saveEditExpense} style={{ ...primaryBtn(), padding: "6px 10px", fontSize: 12 }}>저장</button>
+              <button onClick={cancelEditExpense} style={{ ...iconBtn(false), padding: "6px 10px", fontSize: 12 }}>취소</button>
             </div>
           ) : (
             <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${LINE}` }}>
@@ -1752,11 +1749,6 @@ function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPa
                 <div style={{ fontSize: 11, color: MUTE, marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
                   <span>{e.payer} 결제</span>
                   <span style={{ color: EXPENSE_CATEGORY_COLORS[e.category] || MUTE, fontWeight: 700 }}>{e.category || "기타"}</span>
-                  {e.excludeFromSplit && (
-                    <span style={{ color: AMBER, fontWeight: 700, background: `${AMBER}17`, padding: "1px 6px", borderRadius: 8 }}>
-                      {e.payer}가 쏨 · 정산 제외
-                    </span>
-                  )}
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1771,27 +1763,16 @@ function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPa
         {members.length === 0 ? (
           <div style={{ marginTop: 14, fontSize: 12, color: MUTE }}>지출을 추가하려면 먼저 멤버를 추가해주세요.</div>
         ) : (
-          <div style={{ marginTop: 14, padding: 14, background: PANEL, borderRadius: 8 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-              <input placeholder="항목" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} style={inputStyle(120)} />
-              <input placeholder="금액" type="number" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} style={inputStyle(90)} />
-              <select value={draft.payer} onChange={(e) => setDraft({ ...draft, payer: e.target.value })} style={{ ...inputStyle(90), padding: "8px 6px" }}>
-                {members.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} style={{ ...inputStyle(100), padding: "8px 6px" }}>
-                {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <button onClick={addExpense} style={primaryBtn()}><Plus size={13} /> 추가</button>
-            </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: MUTE, cursor: "pointer", width: "fit-content" }}>
-              <input
-                type="checkbox"
-                checked={draft.excludeFromSplit}
-                onChange={(e) => setDraft({ ...draft, excludeFromSplit: e.target.checked })}
-                style={{ accentColor: ACCENT }}
-              />
-              정산에서 제외 (엔빵 안 하고 {draft.payer || "이 사람"}이 그냥 쐈어요)
-            </label>
+          <div style={{ marginTop: 14, padding: 14, background: PANEL, borderRadius: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input placeholder="항목" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} style={inputStyle(120)} />
+            <input placeholder="금액" type="number" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} style={inputStyle(90)} />
+            <select value={draft.payer} onChange={(e) => setDraft({ ...draft, payer: e.target.value })} style={{ ...inputStyle(90), padding: "8px 6px" }}>
+              {members.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} style={{ ...inputStyle(100), padding: "8px 6px" }}>
+              {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <button onClick={addExpense} style={primaryBtn()}><Plus size={13} /> 추가</button>
           </div>
         )}
 
@@ -1835,7 +1816,7 @@ function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPa
                   perPerson,
                   categoriesWithSum: EXPENSE_CATEGORIES.map((cat) => ({
                     cat,
-                    sum: splitExpenses.filter((e) => (e.category || "기타") === cat).reduce((s, e) => s + e.amount, 0),
+                    sum: expenses.filter((e) => (e.category || "기타") === cat).reduce((s, e) => s + e.amount, 0),
                   })).filter((c) => c.sum > 0),
                   transactions: settleDebts(members, adjustedPaidByMember, perPerson),
                 })
@@ -1848,12 +1829,7 @@ function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPa
           )}
         </div>
         <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 4 }}>{total.toLocaleString()}원</div>
-        <div style={{ fontSize: 12, color: MUTE, marginBottom: treatTotal > 0 ? 4 : 18 }}>1인당 {Math.round(perPerson).toLocaleString()}원</div>
-        {treatTotal > 0 && (
-          <div style={{ fontSize: 11, color: AMBER, marginBottom: 18 }}>
-            (별도로 쏜 금액 {treatTotal.toLocaleString()}원은 정산에서 빠졌어요)
-          </div>
-        )}
+        <div style={{ fontSize: 12, color: MUTE, marginBottom: 18 }}>1인당 {Math.round(perPerson).toLocaleString()}원</div>
 
         {total > 0 && (
           <>
@@ -1861,7 +1837,7 @@ function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPa
               <PieChart size={12} /> 카테고리별 지출
             </div>
             {EXPENSE_CATEGORIES.map((cat) => {
-              const sum = splitExpenses.filter((e) => (e.category || "기타") === cat).reduce((s, e) => s + e.amount, 0);
+              const sum = expenses.filter((e) => (e.category || "기타") === cat).reduce((s, e) => s + e.amount, 0);
               if (sum === 0) return null;
               const pct = Math.round((sum / total) * 100);
               const color = EXPENSE_CATEGORY_COLORS[cat] || MUTE;
@@ -1900,6 +1876,13 @@ function BudgetTab({ members, setMembers, expenses, setExpenses, payments, setPa
 }
 
 // ---------------- 준비물 ----------------
+const ASSIGNEE_COLORS = [ACCENT, WARN, AMBER, SLATE, "#8B7EC8", "#5FA8D3"];
+function getAssigneeColor(name, assigneeOptions) {
+  if (name === "공용") return MUTE;
+  const idx = Math.max(0, assigneeOptions.indexOf(name) - 1);
+  return ASSIGNEE_COLORS[idx % ASSIGNEE_COLORS.length];
+}
+
 function ChecklistTab({ items, setItems, members }) {
   const [draft, setDraft] = useState("");
   const [category, setCategory] = useState(CHECKLIST_CATEGORIES[0]);
@@ -1920,10 +1903,19 @@ function ChecklistTab({ items, setItems, members }) {
   function reassign(id, assignedTo) {
     setItems(items.map((i) => (i.id === id ? { ...i, assignedTo } : i)));
   }
+  function recategorizeItem(id, cat) {
+    setItems(items.map((i) => (i.id === id ? { ...i, category: cat } : i)));
+  }
 
   const doneCount = items.filter((i) => i.done).length;
-  const grouped = CHECKLIST_CATEGORIES.map((cat) => ({ cat, list: items.filter((i) => i.category === cat) })).filter((g) => g.list.length > 0);
-  const uncategorized = items.filter((i) => !CHECKLIST_CATEGORIES.includes(i.category));
+  const grouped = assigneeOptions
+    .map((a) => ({ a, list: items.filter((i) => (i.assignedTo || "공용") === a) }))
+    .filter((g) => g.list.length > 0);
+  const otherAssignees = items.filter((i) => !assigneeOptions.includes(i.assignedTo || "공용"));
+  const otherGroups = [...new Set(otherAssignees.map((i) => i.assignedTo))].map((a) => ({
+    a,
+    list: items.filter((i) => i.assignedTo === a),
+  }));
 
   return (
     <div style={{ maxWidth: 460 }}>
@@ -1932,12 +1924,15 @@ function ChecklistTab({ items, setItems, members }) {
 
       {items.length === 0 && <div style={{ fontSize: 12, color: MUTE, marginBottom: 12 }}>아직 준비물이 없어요.</div>}
 
-      {[...grouped, ...(uncategorized.length ? [{ cat: "기타", list: uncategorized }] : [])].map(({ cat, list }) => (
-        <div key={cat} style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: ACCENT, letterSpacing: "0.04em", marginBottom: 6 }}>{cat.toUpperCase()}</div>
-          {list.map((i) => {
-            const assignedTo = i.assignedTo || "공용";
-            return (
+      {[...grouped, ...otherGroups].map(({ a, list }) => {
+        const color = getAssigneeColor(a, assigneeOptions);
+        return (
+          <div key={a} style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color, letterSpacing: "0.04em", marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: color, display: "inline-block" }} />
+              {a} 챙길 것 · {list.length}
+            </div>
+            {list.map((i) => (
               <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: `1px solid ${LINE}` }}>
                 <div
                   onClick={() => toggle(i.id)}
@@ -1948,29 +1943,36 @@ function ChecklistTab({ items, setItems, members }) {
                 <span onClick={() => toggle(i.id)} style={{ fontSize: 13, flex: 1, color: i.done ? MUTE : INK, textDecoration: i.done ? "line-through" : "none", cursor: "pointer" }}>
                   {i.label}
                 </span>
+                <select
+                  value={i.category || "기타"}
+                  onChange={(e) => recategorizeItem(i.id, e.target.value)}
+                  style={{ fontSize: 10, color: MUTE, background: PANEL, border: "none", borderRadius: 8, padding: "3px 6px" }}
+                >
+                  {CHECKLIST_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
                 {assigneeOptions.length > 1 && (
                   <select
-                    value={assignedTo}
+                    value={i.assignedTo || "공용"}
                     onChange={(e) => reassign(i.id, e.target.value)}
                     style={{
                       fontSize: 10,
                       fontWeight: 700,
-                      color: assignedTo === "공용" ? MUTE : ACCENT,
-                      background: assignedTo === "공용" ? PANEL : ACCENT_SOFT,
+                      color: getAssigneeColor(i.assignedTo || "공용", assigneeOptions),
+                      background: (i.assignedTo || "공용") === "공용" ? PANEL : `${getAssigneeColor(i.assignedTo || "공용", assigneeOptions)}17`,
                       border: "none",
                       borderRadius: 10,
                       padding: "3px 6px",
                     }}
                   >
-                    {assigneeOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                    {assigneeOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                   </select>
                 )}
                 <button onClick={() => removeItem(i.id)} style={iconBtn(false)}><Trash2 size={12} /></button>
               </div>
-            );
-          })}
-        </div>
-      ))}
+            ))}
+          </div>
+        );
+      })}
 
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ ...inputStyle(90), padding: "8px 6px" }}>
