@@ -66,38 +66,52 @@ function getCategory(id) {
 const CHECKLIST_CATEGORIES = ["의류", "전자기기", "세면용품", "서류/티켓", "기타"];
 
 // ---- 초기 시드 여행 ----
-function seedTrip() {
+// 모든 기능을 한 번에 보여주는 고정 예시 여행. id를 고정해서 앱을 처음 여는
+// 누구에게나 항상 하나만 존재하도록 한다 (TripPlannerApp에서 없으면 자동 생성).
+const EXAMPLE_TRIP_ID = "example";
+function exampleTripData() {
   return {
-    id: uid("t"),
-    name: "여수 1박 2일",
-    startDate: "2026-10-18",
-    endDate: "2026-10-19",
-    members: ["챱츄", "민지", "현우", "소율"],
+    name: "예시",
+    startDate: null,
+    endDate: null,
+    members: ["나", "친구1", "친구2"],
     days: [
       {
         id: "d1",
         label: "1일차",
         date: "10월 18일 (토)",
         stops: [
-          { id: "s1", time: "09:00", title: "서울역 출발", place: "KTX 승차", note: "", lat: 37.5547, lng: 126.9707, category: "transport", checkOut: "", travelStart: null, travelEnd: null, transportMode: "train" },
+          { id: "s1", time: "09:00", title: "서울역 출발", place: "서울역", note: "", lat: 37.5547, lng: 126.9707, category: "transport", checkOut: "", travelStart: null, travelEnd: null, transportMode: "train" },
           { id: "s2", time: "11:20", title: "여수엑스포역 도착", place: "", note: "짐 보관 후 이동", lat: 34.744, lng: 127.7447, category: "transport", checkOut: "", travelStart: null, travelEnd: null, transportMode: "train" },
-          { id: "s3", time: "12:00", title: "여수 게장백반", place: "교동시장 인근", note: "", lat: 34.7604, lng: 127.6622, category: "food", checkOut: "", travelStart: "11:40", travelEnd: "12:00", transportMode: "walk" },
-          { id: "s5", time: "15:00", title: "여수 오션뷰 호텔", place: "만성리", note: "", lat: 34.7699, lng: 127.6883, category: "lodging", checkOut: "11:00", travelStart: "14:45", travelEnd: "15:00", transportMode: "car" },
+          { id: "s3", time: "12:00", title: "게장백반 맛집", place: "교동시장 인근", note: "예약 필요, 웨이팅 길 수 있음", lat: 34.7604, lng: 127.6622, category: "food", checkOut: "", travelStart: "11:40", travelEnd: "12:00", transportMode: "walk" },
+          { id: "s4", time: "14:00", title: "돌산공원 전망대", place: "돌산읍", note: "", lat: 34.7371, lng: 127.7472, category: "sight", checkOut: "", travelStart: "13:30", travelEnd: "14:00", transportMode: "car" },
+          { id: "s5", time: "15:30", title: "오션뷰 호텔", place: "만성리", note: "체크인 시 주차 등록 필요", lat: 34.7699, lng: 127.6883, category: "lodging", checkOut: "11:00", travelStart: "14:45", travelEnd: "15:30", transportMode: "car" },
         ],
       },
-      { id: "d2", label: "2일차", date: "10월 19일 (일)", stops: [{ id: "s4", time: "09:30", title: "향일암", place: "돌산읍", note: "", lat: 34.6664, lng: 127.7431, category: "sight", checkOut: "", travelStart: null, travelEnd: null, transportMode: "car" }] },
+      {
+        id: "d2",
+        label: "2일차",
+        date: "10월 19일 (일)",
+        stops: [
+          { id: "s6", time: "09:30", title: "향일암", place: "돌산읍", note: "", lat: 34.6664, lng: 127.7431, category: "sight", checkOut: "", travelStart: null, travelEnd: null, transportMode: "car" },
+          { id: "s7", time: "12:30", title: "여수엑스포역 출발", place: "", note: "", lat: 34.744, lng: 127.7447, category: "transport", checkOut: "", travelStart: "12:00", travelEnd: "12:30", transportMode: "train" },
+        ],
+      },
     ],
     expenses: [
-      { id: "e1", title: "KTX 왕복", amount: 220000, payer: "챱츄", category: "교통" },
-      { id: "e2", title: "숙소 1박", amount: 160000, payer: "민지", category: "숙박" },
+      { id: "e1", title: "KTX 왕복", amount: 220000, payer: "나", category: "교통" },
+      { id: "e2", title: "숙소 1박", amount: 160000, payer: "친구1", category: "숙박" },
+      { id: "e3", title: "점심 · 게장백반", amount: 90000, payer: "친구2", category: "식비" },
+      { id: "e4", title: "향일암 입장료", amount: 15000, payer: "나", category: "관광/액티비티" },
     ],
+    payments: [{ id: "pay1", from: "친구2", to: "나", amount: 30000 }],
     checklist: [
-      { id: "c1", label: "숙소 예약 확인증", category: "서류/티켓", done: true },
-      { id: "c2", label: "카메라 배터리·SD카드", category: "전자기기", done: false },
-      { id: "c3", label: "우산 / 우비", category: "의류", done: false },
+      { id: "c1", label: "숙소 예약 확인증", category: "서류/티켓", assignedTo: "나", done: true },
+      { id: "c2", label: "카메라 배터리·SD카드", category: "전자기기", assignedTo: "친구1", done: false },
+      { id: "c3", label: "우산 / 우비", category: "의류", assignedTo: "공용", done: false },
+      { id: "c4", label: "보조배터리", category: "전자기기", assignedTo: "친구2", done: false },
     ],
     photos: [],
-    payments: [],
   };
 }
 
@@ -196,8 +210,18 @@ function minutesBetween(start, end) {
 }
 // 장소 이름 → 좌표. 별도 계정/키 없이 쓸 수 있는 OpenStreetMap Nominatim을 사용한다.
 // (네이버 지오코딩보다 정확도는 낮을 수 있어, 결과가 이상하면 좌표를 직접 수정해도 좋다.)
+// 장소 이름, 지번 주소, 우편번호(5자리 숫자) 무엇을 넣어도 좌표를 찾아준다.
+// 대한민국으로 검색 범위를 좁혀서 정확도를 높인다.
 async function geocodePlace(query) {
-  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
+  const trimmed = query.trim();
+  const isPostalCode = /^\d{5}$/.test(trimmed);
+  const params = new URLSearchParams({ format: "json", limit: "1", countrycodes: "kr" });
+  if (isPostalCode) {
+    params.set("postalcode", trimmed);
+  } else {
+    params.set("q", trimmed);
+  }
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
   if (!res.ok) throw new Error("geocode failed");
   const data = await res.json();
   if (data && data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
@@ -578,6 +602,10 @@ export default function TripPlannerApp() {
         const next = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         setTrips(next);
         setLoaded(true);
+        // "예시" 여행이 하나도 없으면 만들어둔다 (앱을 처음 여는 누구에게나 항상 하나 존재).
+        if (!next.some((t) => t.id === EXAMPLE_TRIP_ID)) {
+          setDoc(doc(db, "trips", EXAMPLE_TRIP_ID), exampleTripData()).catch(() => {});
+        }
       },
       (err) => {
         console.error("Firestore 연결 실패:", err);
@@ -1127,21 +1155,27 @@ function StopForm({ value, onChange, onSubmit, onCancel, submitLabel }) {
         <Field label={value.category === "lodging" ? "숙소 이름" : "일정 이름"}>
           <input value={value.title} onChange={(e) => onChange({ title: e.target.value })} style={inputStyle(130)} />
         </Field>
-        <Field label="장소 (선택)">
-          <input value={value.place} onChange={(e) => onChange({ place: e.target.value })} style={inputStyle(100)} />
-        </Field>
-        <Field label="좌표 (선택)">
+        <Field label="장소 / 지번 / 우편번호 (선택)">
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <input value={value.coords} onChange={(e) => onChange({ coords: e.target.value })} style={inputStyle(96)} title="장소 이름으로 자동 검색하거나 직접 입력할 수 있어요" />
+            <input
+              value={value.place}
+              onChange={(e) => onChange({ place: e.target.value })}
+              style={inputStyle(120)}
+              placeholder="예: 강남역, 역삼동 123-4, 06134"
+              title="장소 이름, 지번 주소, 우편번호(5자리) 모두 검색할 수 있어요"
+            />
             <button
               onClick={lookupCoords}
               disabled={geoStatus === "loading"}
-              title="장소 이름으로 좌표 자동 검색"
+              title="입력한 장소/지번/우편번호로 좌표 자동 검색"
               style={{ ...iconBtn(false), background: ACCENT_SOFT, borderRadius: 6, padding: "7px 8px" }}
             >
               <Search size={12} color={ACCENT} />
             </button>
           </div>
+        </Field>
+        <Field label="좌표 (자동 입력됨)">
+          <input value={value.coords} onChange={(e) => onChange({ coords: e.target.value })} style={inputStyle(96)} placeholder="검색하면 자동으로 채워져요" title="검색 결과가 여기 자동으로 채워져요. 직접 좌표를 붙여넣어도 돼요." />
         </Field>
         <button onClick={onSubmit} style={primaryBtn()}><Plus size={13} /> {submitLabel}</button>
         {onCancel && (
