@@ -1643,8 +1643,6 @@ function NaverMapPanel({ stops, dayLabel }) {
         logoControl: false,
         mapDataControl: false,
       });
-    } else {
-      mapInstanceRef.current.setCenter(center);
     }
 
     (mapInstanceRef.current.__overlays || []).forEach((o) => o.setMap(null));
@@ -1666,10 +1664,29 @@ function NaverMapPanel({ stops, dayLabel }) {
 
     if (withCoords.length >= 2) {
       const path = withCoords.map((s) => new naver.maps.LatLng(s.lat, s.lng));
-      const polyline = new naver.maps.Polyline({ map: mapInstanceRef.current, path, strokeColor: ACCENT, strokeWeight: 5, strokeOpacity: 0.85 });
+      const polyline = new naver.maps.Polyline({
+        map: mapInstanceRef.current,
+        path,
+        strokeColor: ACCENT,
+        strokeWeight: 4,
+        strokeOpacity: 0.75,
+        strokeLineCap: "round",
+        strokeLineJoin: "round",
+      });
       overlays.push(polyline);
     }
     mapInstanceRef.current.__overlays = overlays;
+
+    // 경로 전체가 여백 있게 한눈에 들어오도록 카메라를 자동으로 맞춘다.
+    if (withCoords.length >= 2) {
+      const first = new naver.maps.LatLng(withCoords[0].lat, withCoords[0].lng);
+      const bounds = new naver.maps.LatLngBounds(first, first);
+      withCoords.forEach((s) => bounds.extend(new naver.maps.LatLng(s.lat, s.lng)));
+      mapInstanceRef.current.fitBounds(bounds, { top: 32, right: 32, bottom: 32, left: 32 });
+    } else if (withCoords.length === 1) {
+      mapInstanceRef.current.setCenter(center);
+      mapInstanceRef.current.setZoom(14);
+    }
   }, [scriptStatus, stops]);
 
   const withCoordsCount = stops.filter((s) => typeof s.lat === "number" && typeof s.lng === "number" && !s.hideFromMap).length;
@@ -1696,7 +1713,7 @@ function NaverMapPanel({ stops, dayLabel }) {
   return (
     <div style={{ margin: "6px 0 16px" }}>
       {scriptStatus === "error" && <div style={{ fontSize: 12, color: WARN, marginBottom: 6 }}>지도를 불러오지 못했어요. Client ID를 확인해주세요.</div>}
-      <div ref={mapRef} style={{ width: "100%", height: 260, borderRadius: 8, border: `1px solid ${LINE}`, background: PANEL, cursor: "default" }} />
+      <div ref={mapRef} style={{ width: "100%", height: 320, borderRadius: 8, border: `1px solid ${LINE}`, background: PANEL, cursor: "default" }} />
       <div style={{ fontSize: 11, color: MUTE, marginTop: 6, display: "flex", justifyContent: "space-between" }}>
         <span>{dayLabel} · 좌표가 있는 코스 {withCoordsCount}곳 표시 중</span>
         {stops.length >= 2 && (
