@@ -31,6 +31,7 @@ import {
   PieChart,
   Share2,
   RefreshCw,
+  EyeOff,
 } from "lucide-react";
 
 // ---- design tokens ----
@@ -1177,6 +1178,15 @@ function StopForm({ value, onChange, onSubmit, onCancel, submitLabel }) {
         <Field label="좌표 (자동 입력됨)">
           <input value={value.coords} onChange={(e) => onChange({ coords: e.target.value })} style={inputStyle(96)} placeholder="검색하면 자동으로 채워져요" title="검색 결과가 여기 자동으로 채워져요. 직접 좌표를 붙여넣어도 돼요." />
         </Field>
+        <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: MUTE, cursor: "pointer", paddingBottom: 8 }}>
+          <input
+            type="checkbox"
+            checked={!!value.hideFromMap}
+            onChange={(e) => onChange({ hideFromMap: e.target.checked })}
+            style={{ accentColor: ACCENT }}
+          />
+          지도에 표시 안 함
+        </label>
         <button onClick={onSubmit} style={primaryBtn()}><Plus size={13} /> {submitLabel}</button>
         {onCancel && (
           <button onClick={onCancel} style={{ ...iconBtn(false), padding: "8px 12px", fontSize: 12, fontWeight: 600 }}>
@@ -1291,9 +1301,10 @@ function ItineraryTab({ days, setDays, tripStartDate, tripName }) {
       travelStart: draft.travelStart || null,
       travelEnd: draft.travelEnd || null,
       transportMode: draft.transportMode || "car",
+      hideFromMap: !!draft.hideFromMap,
     };
     setDays(days.map((d) => (d.id === activeDay ? { ...d, stops: [...d.stops, stop].sort((a, b) => a.time.localeCompare(b.time)) } : d)));
-    setDraft({ time: "", checkOut: "", title: "", place: "", coords: "", travelStart: "", travelEnd: "", transportMode: "car", category: "sight" });
+    setDraft({ time: "", checkOut: "", title: "", place: "", coords: "", travelStart: "", travelEnd: "", transportMode: "car", category: "sight", hideFromMap: false });
   }
   function startEdit(s) {
     setEditingStopId(s.id);
@@ -1307,6 +1318,7 @@ function ItineraryTab({ days, setDays, tripStartDate, tripName }) {
       travelStart: s.travelStart || "",
       travelEnd: s.travelEnd || "",
       transportMode: s.transportMode || "car",
+      hideFromMap: !!s.hideFromMap,
     });
   }
   function cancelEdit() {
@@ -1340,6 +1352,7 @@ function ItineraryTab({ days, setDays, tripStartDate, tripName }) {
                         travelStart: editDraft.travelStart || null,
                         travelEnd: editDraft.travelEnd || null,
                         transportMode: editDraft.transportMode || "car",
+                        hideFromMap: !!editDraft.hideFromMap,
                       }
                     : s
                 )
@@ -1493,6 +1506,11 @@ function ItineraryTab({ days, setDays, tripStartDate, tripName }) {
                           </div>
                         </div>
                         {s.place && <div style={{ fontSize: 12, color: "#65686F", marginTop: 5, display: "flex", alignItems: "center", gap: 4 }}><MapPin size={11} /> {s.place}</div>}
+                        {s.hideFromMap && (
+                          <div style={{ fontSize: 10, color: MUTE, marginTop: 4, display: "flex", alignItems: "center", gap: 3 }}>
+                            <EyeOff size={10} /> 지도에 표시 안 함
+                          </div>
+                        )}
                       </>
                     )}
                     {s.note || editingNoteId === s.id ? (
@@ -1608,11 +1626,23 @@ function NaverMapPanel({ stops, dayLabel }) {
   useEffect(() => {
     if (scriptStatus !== "ready" || !mapRef.current || !window.naver?.maps) return;
     const { naver } = window;
-    const withCoords = stops.filter((s) => typeof s.lat === "number" && typeof s.lng === "number");
+    const withCoords = stops.filter((s) => typeof s.lat === "number" && typeof s.lng === "number" && !s.hideFromMap);
     const center = withCoords.length ? new naver.maps.LatLng(withCoords[0].lat, withCoords[0].lng) : new naver.maps.LatLng(34.7604, 127.6622);
 
     if (!mapInstanceRef.current) {
-      mapInstanceRef.current = new naver.maps.Map(mapRef.current, { center, zoom: 12 });
+      mapInstanceRef.current = new naver.maps.Map(mapRef.current, {
+        center,
+        zoom: 12,
+        draggable: false,
+        pinchZoom: false,
+        scrollWheel: false,
+        keyboardShortcuts: false,
+        disableKineticPan: true,
+        zoomControl: false,
+        scaleControl: false,
+        logoControl: false,
+        mapDataControl: false,
+      });
     } else {
       mapInstanceRef.current.setCenter(center);
     }
@@ -1627,8 +1657,8 @@ function NaverMapPanel({ stops, dayLabel }) {
         map: mapInstanceRef.current,
         title: s.title,
         icon: {
-          content: `<div style="background:${cat.color};color:#fff;font-size:11px;font-weight:700;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)">${i + 1}</div>`,
-          anchor: new naver.maps.Point(10, 10),
+          content: `<div style="background:${cat.color};color:#fff;font-size:9px;font-weight:700;width:13px;height:13px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)">${i + 1}</div>`,
+          anchor: new naver.maps.Point(6.5, 6.5),
         },
       });
       overlays.push(marker);
@@ -1636,13 +1666,13 @@ function NaverMapPanel({ stops, dayLabel }) {
 
     if (withCoords.length >= 2) {
       const path = withCoords.map((s) => new naver.maps.LatLng(s.lat, s.lng));
-      const polyline = new naver.maps.Polyline({ map: mapInstanceRef.current, path, strokeColor: ACCENT, strokeWeight: 3, strokeOpacity: 0.85 });
+      const polyline = new naver.maps.Polyline({ map: mapInstanceRef.current, path, strokeColor: ACCENT, strokeWeight: 5, strokeOpacity: 0.85 });
       overlays.push(polyline);
     }
     mapInstanceRef.current.__overlays = overlays;
   }, [scriptStatus, stops]);
 
-  const withCoordsCount = stops.filter((s) => typeof s.lat === "number" && typeof s.lng === "number").length;
+  const withCoordsCount = stops.filter((s) => typeof s.lat === "number" && typeof s.lng === "number" && !s.hideFromMap).length;
 
   if (!storageChecked) return null;
 
@@ -1666,7 +1696,7 @@ function NaverMapPanel({ stops, dayLabel }) {
   return (
     <div style={{ margin: "6px 0 16px" }}>
       {scriptStatus === "error" && <div style={{ fontSize: 12, color: WARN, marginBottom: 6 }}>지도를 불러오지 못했어요. Client ID를 확인해주세요.</div>}
-      <div ref={mapRef} style={{ width: "100%", height: 260, borderRadius: 8, border: `1px solid ${LINE}`, background: PANEL }} />
+      <div ref={mapRef} style={{ width: "100%", height: 260, borderRadius: 8, border: `1px solid ${LINE}`, background: PANEL, cursor: "default" }} />
       <div style={{ fontSize: 11, color: MUTE, marginTop: 6, display: "flex", justifyContent: "space-between" }}>
         <span>{dayLabel} · 좌표가 있는 코스 {withCoordsCount}곳 표시 중</span>
         {stops.length >= 2 && (
